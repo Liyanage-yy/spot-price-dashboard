@@ -595,10 +595,13 @@ function initUI(){
   document.getElementById('resvslot').addEventListener('change',resvSafe);
   document.getElementById('sigk').addEventListener('change',statSafe);
 
-  /* 统计表月份 */
+  /* 统计表月份：除有完整日的月份外，也放上「只有未完成日」的当月，
+     这样月初第一天就能切到当月、看到当天那一行（否则当月会一直缺席到出现首个完整日）。 */
+  var byMS={};
+  FULL.concat(PART).forEach(function(d){ byMS[monthOf(d)]=1; });
   var sm=document.getElementById('statmonth');
   var so='<option value="ALL">全部</option>';
-  Object.keys(byM).sort().reverse().forEach(function(m){
+  Object.keys(byMS).sort().reverse().forEach(function(m){
     so+='<option value="'+m+'"'+(m===(LASTFULL.slice(0,7))?' selected':'')+'>'+m+'</option>';
   });
   sm.innerHTML=so;
@@ -612,8 +615,11 @@ function initUI(){
 }
 
 function start(){
-  TODAY = PART.length ? PART[PART.length-1] : null;
   LASTFULL = FULL[FULL.length-1];
+  /* 只有「比最后一个完整日更新」的未完成日才算「今天」，
+     避免历史上有缺口的日期被误认成今天、进而被当默认视图。 */
+  var lastPart = PART.length ? PART[PART.length-1] : null;
+  TODAY = (lastPart && lastPart > LASTFULL) ? lastPart : null;
   initUI();
 }
 
