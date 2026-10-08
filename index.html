@@ -39,7 +39,7 @@ table tbody tr:nth-child(even) td.dr{background:#f6f8f9}
 table tbody tr:hover td{background:#f3f6f9}
 table tbody tr:hover td.dr{background:#eef2f6}
 table.st{font-size:11px}
-table.st th,table.st td{padding:3px 4px}
+table.st th,table.st td{padding:3px 3px}
 table.st .dr{min-width:84px;font-size:11.5px}
 td.sum{background:#fdf6f5}
 table tbody tr:nth-child(even) td.sum{background:#fbf1ef}
@@ -52,6 +52,10 @@ table tbody tr:nth-child(even) td.sig-hi{background:#ecaaa2}
 table tbody tr:nth-child(even) td.sig-hi2{background:#f9d8d5}
 table tbody tr:nth-child(even) td.sig-lo{background:#9dcdab}
 table tbody tr:nth-child(even) td.sig-lo2{background:#dcEEE0}
+.btn{font:13px/1.6 inherit;padding:4px 13px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--sub);cursor:pointer}
+.btn:hover{border-color:#aab2bb;color:var(--ink)}
+table.st th.pk,table.st td.pk{width:26px;padding:3px 1px;text-align:center}
+table.st td.pk input{cursor:pointer;margin:0}
 .foot{font-size:12px;color:#8a9099;margin-top:14px}
 </style></head><body><div class="wrap">
 <h1>四川电力现货电价看板</h1>
@@ -70,7 +74,9 @@ table tbody tr:nth-child(even) td.sig-lo2{background:#dcEEE0}
 <h2>价格统计</h2>
 <div class="ctl"><span>月份：<select id="statmonth"></select></span><span>着色：<select id="sigk"><option value="1">±1σ</option><option value="1.5" selected>±1.5σ</option><option value="2">±2σ</option></select></span><span>行为逐小时均价（该小时 4 个 15 分钟点按<b>出清电量加权</b>）；<b>近 5 天均价固定取最近 5 个完整日</b>，不随月份变化；24 点价格按该行<b>均值 ± 倍数标准差</b>着色（红=偏高、绿=偏低）。</span></div>
 <div class="card" style="padding:0"><div class="tblwrap"><table id="stattable" class="st"></table></div></div>
-<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-07，取数时点 2026-10-08 16:30:35。</div>
+<div class="ctl" style="margin:16px 0 10px"><span id="calchint"></span><button class="btn" id="calcclr">清空勾选</button></div>
+<div class="card" style="padding:0"><div class="tblwrap"><table id="calctable" class="st"></table></div></div>
+<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-09-29，取数时点 2026-09-30 15:33:34。</div>
 </div>
 
 <script>
@@ -86,7 +92,7 @@ var DURL='data/';
 /* 全局数据视图：站点模式下按月增量并入，单文件模式下一次到位 */
 var FULL=[],PART=[],PRICE={},QTY={},STAT={},BOX={},RES={},MON={},MAN=null;
 var TODAY=null, LASTFULL=null;
-var state={scope:null, gran:'h', sel:{}};
+var state={scope:null, gran:'h', sel:{}, pick:{}};
 SERIES.forEach(function(s){ state.sel[s[0]]=true; });
 state.sel["竞价空间"]=true; state.sel["现货电价"]=true;
 
@@ -103,7 +109,12 @@ function hourlyW(p,q){
   return o;
 }
 function seqOf(name,rec,gran){var a=(rec&&rec[name])||[];if(!a.length)return [];return gran==='h'?agg4(a):a.slice();}
-function labelFor(i){if(state.gran==='h')return state.scope+' '+p2(i)+':00–'+p2(i+1)+':00';return state.scope+' '+p2(Math.floor(i/4))+':'+p2((i%4)*15);}
+function labelFor(i){
+  /* 时刻口径与交易中心/平台一致：15 分钟点按区间「终点」标注（00:15 … 24:00） */
+  if(state.gran==='h')return state.scope+' '+p2(i)+':00–'+p2(i+1)+':00';
+  var j=i+1;
+  return state.scope+' '+p2(Math.floor(j/4))+':'+p2((j%4)*15);
+}
 
 /* ================= ① 电价 + 各电源出清电量 ================= */
 function draw(){
@@ -144,6 +155,12 @@ function draw(){
     s.push('<text x="'+(PL-8)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="#6b7280" text-anchor="end">'+Math.round((qhi-Q_LO)*g/5/1000)*1000+'</text>');
     v2=elo+(ehi-elo)*g/5;
     s.push('<text x="'+(PL+iw+8)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="'+C_PRICE+'" text-anchor="start">'+Math.round(v2)+'</text>');
+  }
+  /* 电价 0 基准线：右轴上 0 有明确位置，0 以下即负电价区 */
+  if(elo<0 && ehi>0){
+    var yz=Yp(0);
+    s.push('<line x1="'+PL+'" y1="'+yz.toFixed(1)+'" x2="'+(PL+iw)+'" y2="'+yz.toFixed(1)+'" stroke="#9aa2ac" stroke-width="1"/>');
+    s.push('<text x="'+(PL+iw+8)+'" y="'+(yz+4).toFixed(1)+'" font-size="11" fill="#4a5058" text-anchor="start">0</text>');
   }
   var step=state.gran==='h'?1:4;
   for(t=0;t<NS;t+=step){
@@ -481,7 +498,8 @@ function renderStat(){
   });
   var h='<thead><tr><th class="dr">日期</th>';
   for(var i=0;i<24;i++) h+='<th>'+(i)+'-'+(i+1)+'</th>';
-  h+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th></tr></thead><tbody>';
+  h+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th>'
+    +'<th class="pk"><input type="checkbox" id="pickall" title="全选/取消上表日期"></th></tr></thead><tbody>';
   rows.forEach(function(r){
     var st=rowStats(r.h);
     h+='<tr><td class="dr">'+r.name+(r.sub?'<br><span style="font-weight:400;color:#8a9099;font-size:11.5px">'+r.sub+'</span>':'')+'</td>';
@@ -498,10 +516,84 @@ function renderStat(){
       if(x==null) cls.push('na');
       h+='<td'+(cls.length?' class="'+cls.join(' ')+'"':'')+'>'+(x==null?'—':x.toFixed(2))+'</td>';
     });
+    h+='<td class="pk">'+(r.sum?'':'<input type="checkbox" class="pkd" data-d="'+r.name+'"'
+        +(state.pick[r.name]?' checked':'')+'>')+'</td>';
     h+='</tr>';
   });
   h+='</tbody>';
   document.getElementById('stattable').innerHTML=h;
+
+  /* 勾选联动：勾中的日期交给下方计算器算逐时均值 */
+  var boxes=document.querySelectorAll('#stattable .pkd');
+  for(var q=0;q<boxes.length;q++){
+    boxes[q].addEventListener('change',function(){
+      var d=this.getAttribute('data-d');
+      if(this.checked) state.pick[d]=1; else delete state.pick[d];
+      syncPickAll();
+      renderCalc();
+    });
+  }
+  var pa=document.getElementById('pickall');
+  if(pa){
+    pa.addEventListener('change',function(){
+      var v=this.checked;
+      for(var q2=0;q2<boxes.length;q2++){
+        boxes[q2].checked=v;
+        var dd=boxes[q2].getAttribute('data-d');
+        if(v) state.pick[dd]=1; else delete state.pick[dd];
+      }
+      renderCalc();
+    });
+  }
+  syncPickAll();
+  renderCalc();
+}
+
+function syncPickAll(){
+  var pa=document.getElementById('pickall');
+  if(!pa) return;
+  var boxes=document.querySelectorAll('#stattable .pkd'), all=boxes.length>0;
+  for(var q=0;q<boxes.length;q++){ if(!boxes[q].checked){ all=false; break; } }
+  pa.checked=all;
+}
+
+/* ================= ⑤ 已选日期均值计算（口径同「近 5 天均价」） ================= */
+function pickedDays(){
+  var a=[];
+  for(var d in state.pick){ if(state.pick[d]) a.push(d); }
+  return a.sort();
+}
+function renderCalc(){
+  var days=pickedDays();
+  var hint=document.getElementById('calchint');
+  var tb=document.getElementById('calctable');
+  if(!tb) return;
+  if(!days.length){
+    hint.textContent='勾选上表「日期」行最右侧的方框，即可在这里计算这些天的逐时均值（口径与「近 5 天均价」相同）。';
+    tb.innerHTML='';
+    return;
+  }
+  var k=statSigma();
+  var hh=unionRow(days,'h');
+  var st=rowStats(hh);
+  var out='<thead><tr><th class="dr">已选日期均值</th>';
+  for(var i=0;i<24;i++) out+='<th>'+i+'-'+(i+1)+'</th>';
+  out+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th><th class="pk"></th>'
+      +'</tr></thead><tbody><tr>';
+  out+='<td class="dr">共 '+days.length+' 天</td>';
+  hh.forEach(function(x){
+    var cls=[];
+    if(x==null) cls.push('na'); else { var c=cellClass(x, st.mu, st.sd, k); if(c) cls.push(c); }
+    out+='<td'+(cls.length?' class="'+cls.join(' ')+'"':'')+'>'+(x==null?'—':x.toFixed(2))+'</td>';
+  });
+  ['hi','lo','mean','med'].forEach(function(key){
+    var x=unionRow(days,key);
+    out+='<td'+(x==null?' class="na"':'')+'>'+(x==null?'—':x.toFixed(2))+'</td>';
+  });
+  out+='<td class="pk"></td></tr></tbody>';
+  tb.innerHTML=out;
+  hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
+    +'　（逐时均值按所选各天同一小时取平均，与「近 5 天均价」口径一致）';
 }
 
 /* ================= 按月懒加载（站点模式） ================= */
@@ -607,6 +699,10 @@ function initUI(){
   sm.innerHTML=so;
   if(!sm.value) sm.value=LASTFULL.slice(0,7);
   sm.addEventListener('change',statSafe);
+  document.getElementById('calcclr').addEventListener('click',function(){
+    state.pick={};
+    renderStat();
+  });
 
   drawSafe();
   boxSafe();
