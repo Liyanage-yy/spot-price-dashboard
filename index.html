@@ -17,9 +17,9 @@ select{font:14px/1.5 inherit;padding:5px 8px;border:1px solid var(--line);border
 .seg button.on{background:var(--red);color:#fff}
 .chartbox{position:relative}
 svg{display:block}
-#tip{position:absolute;pointer-events:none;display:none;background:rgba(28,28,30,.93);color:#fff;
+#tip,#cmptip{position:absolute;pointer-events:none;display:none;background:rgba(28,28,30,.93);color:#fff;
      font-size:12.5px;line-height:1.6;padding:8px 11px;border-radius:7px;white-space:nowrap;z-index:5}
-#tip b{font-weight:600}
+#tip b,#cmptip b{font-weight:600}
 .legend{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px;font-size:13px;justify-content:center}
 .lg{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border:1px solid var(--line);
     border-radius:20px;background:#fff;cursor:pointer;user-select:none;color:#a3a9b1;transition:.12s}
@@ -76,7 +76,11 @@ table.st td.pk input{cursor:pointer;margin:0}
 <div class="card" style="padding:0"><div class="tblwrap"><table id="stattable" class="st"></table></div></div>
 <div class="ctl" style="margin:16px 0 10px"><span id="calchint"></span><button class="btn" id="calcclr">清空勾选</button></div>
 <div class="card" style="padding:0"><div class="tblwrap"><table id="calctable" class="st"></table></div></div>
-<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-08，取数时点 2026-10-09 15:31:35。</div>
+<h2>近日加权均价对比</h2>
+<div class="ctl"><span id="cmphint"></span><span>标注：<select id="cmplabel"><option value="all" selected>全部点位</option><option value="avg">仅均价线</option><option value="none">不标注</option></select></span></div>
+<div class="legend" id="cmplegend"></div>
+<div class="card chartbox"><div id="cmpchart"></div><div id="cmptip"></div></div>
+<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-08，取数时点 2026-10-09 14:29:39。</div>
 </div>
 
 <script>
@@ -92,7 +96,7 @@ var DURL='data/';
 /* 全局数据视图：站点模式下按月增量并入，单文件模式下一次到位 */
 var FULL=[],PART=[],PRICE={},QTY={},STAT={},BOX={},RES={},MON={},MAN=null;
 var TODAY=null, LASTFULL=null;
-var state={scope:null, gran:'h', sel:{}, pick:{}};
+var state={scope:null, gran:'h', sel:{}, pick:{}, csel:{}, cmpLabel:'all'};
 SERIES.forEach(function(s){ state.sel[s[0]]=true; });
 state.sel["竞价空间"]=true; state.sel["现货电价"]=true;
 
@@ -564,6 +568,7 @@ function pickedDays(){
   return a.sort();
 }
 function renderCalc(){
+  renderCmp();
   var days=pickedDays();
   var hint=document.getElementById('calchint');
   var tb=document.getElementById('calctable');
@@ -594,6 +599,172 @@ function renderCalc(){
   tb.innerHTML=out;
   hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
     +'　（逐时均值按所选各天同一小时取平均，与「近 5 天均价」口径一致）';
+}
+
+/* ================= ⑥ 近日加权均价对比 ================= */
+var CMPC=['#5b9bd5','#ed7d31','#a9d18e','#ffc000','#b4a7d6','#70ad47','#264478','#9e480e',
+          '#997300','#255e91','#636363','#c00000','#7030a0','#00b0f0','#8c6d31','#4472c4'];
+var C_CMP='#1a1a1a';
+function renderCmp(){
+  var days=pickedDays();
+  var el=document.getElementById('cmpchart');
+  var lg=document.getElementById('cmplegend');
+  var hint=document.getElementById('cmphint');
+  if(!el) return;
+  if(!days.length){
+    el.innerHTML='<div style="padding:34px;text-align:center;color:#a3a9b1">在上方「价格统计」勾选日期后，这里显示这些天的逐小时加权均价对比</div>';
+    if(lg) lg.innerHTML='';
+    if(hint) hint.textContent='默认勾选最近 10 个完整日（不含当天）。';
+    return;
+  }
+
+  var W=VW, HH=620, padL=64, padR=56, padT=26, padB=54;
+  var iw=W-padL-padR, ih=HH-padT-padB, N=24;
+  var X=function(i){return padL+iw*(i+0.5)/N;};
+  var series=days.map(function(d){ return {d:d, v:((STAT[d]||{}).h)||[]}; });
+
+  /* 已选日期的逐小时均价（与统计表「近 5 天均价」同口径：同小时跨天取平均、空值跳过） */
+  var avg=[];
+  for(var i=0;i<N;i++){
+    var vs=[];
+    series.forEach(function(s){ var x=s.v[i]; if(x!=null) vs.push(x); });
+    avg.push(vs.length? vs.reduce(function(a,b){return a+b;},0)/vs.length : null);
+  }
+
+  var ymin=Infinity, ymax=-Infinity;
+  function scan(arr){ arr.forEach(function(x){ if(x==null)return; if(x<ymin)ymin=x; if(x>ymax)ymax=x; }); }
+  series.forEach(function(s){ scan(s.v); });
+  scan(avg);
+  if(!isFinite(ymin)){ ymin=0; ymax=500; }
+  var ylo=Math.min(0, Math.floor(ymin/50)*50);
+  var yhi=Math.max(500, Math.ceil(ymax/50)*50);
+  var Y=function(v){return padT+ih-ih*(v-ylo)/(yhi-ylo);};
+
+  var o=[], gv;
+  for(gv=ylo; gv<=yhi+1e-6; gv+=50){
+    var y=Y(gv);
+    o.push('<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(padL+iw)+'" y2="'+y.toFixed(1)+'" stroke="#eaecf0"/>');
+    o.push('<text x="'+(padL-8)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="#6b7280" text-anchor="end">'+Math.round(gv)+'</text>');
+  }
+  if(ylo<0 && yhi>0){
+    var yz=Y(0);
+    o.push('<line x1="'+padL+'" y1="'+yz.toFixed(1)+'" x2="'+(padL+iw)+'" y2="'+yz.toFixed(1)+'" stroke="#9aa2ac" stroke-width="1"/>');
+  }
+  for(i=0;i<N;i++)
+    o.push('<line x1="'+X(i).toFixed(1)+'" y1="'+padT+'" x2="'+X(i).toFixed(1)+'" y2="'+(padT+ih)+'" stroke="#f6f7f9"/>');
+
+  series.forEach(function(s,k){
+    if(state.csel[s.d]===false) return;
+    var pts=[];
+    for(var i2=0;i2<N;i2++){
+      var v=s.v[i2];
+      if(v==null) continue;
+      pts.push(X(i2).toFixed(1)+','+Y(v).toFixed(1));
+    }
+    if(pts.length>1)
+      o.push('<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+CMPC[k%CMPC.length]+
+             '" stroke-width="1.5" opacity="0.92"/>');
+  });
+  var ap=[];
+  for(i=0;i<N;i++){ if(avg[i]!=null) ap.push(X(i).toFixed(1)+','+Y(avg[i]).toFixed(1)); }
+  if(ap.length>1)
+    o.push('<polyline points="'+ap.join(' ')+'" fill="none" stroke="'+C_CMP+'" stroke-width="2.8"/>');
+
+  /* ---- 点位数值标注：同一时刻的多个标签按 y 排序后强制错开，避免叠字 ---- */
+  var LBL=state.cmpLabel||'all';
+  if(LBL!=='none'){
+    for(i=0;i<N;i++){
+      var items=[];
+      if(LBL==='all'){
+        series.forEach(function(s,k){
+          if(state.csel[s.d]===false) return;
+          var v=s.v[i];
+          if(v==null) return;
+          items.push({y:Y(v), c:CMPC[k%CMPC.length], v:v});
+        });
+      }
+      if(avg[i]!=null) items.push({y:Y(avg[i]), c:C_CMP, v:avg[i], b:true});
+      if(!items.length) continue;
+      items.sort(function(a,b){return a.y-b.y;});
+      var gap=10.5, q;
+      for(q=0;q<items.length;q++)
+        if(q>0 && items[q].y-items[q-1].y<gap) items[q].y=items[q-1].y+gap;
+      var over=items[items.length-1].y-(padT+ih-4);
+      if(over>0) for(q=0;q<items.length;q++) items[q].y-=over;
+      if(items[0].y<padT+9){
+        var up=padT+9-items[0].y;
+        for(q=0;q<items.length;q++) items[q].y+=up;
+      }
+      for(q=0;q<items.length;q++){
+        var it=items[q];
+        o.push('<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(it.v).toFixed(1)+'" r="1.7" fill="'+it.c+'"/>');
+        o.push('<text x="'+X(i).toFixed(1)+'" y="'+(it.y-3).toFixed(1)+'" font-size="9.5" fill="'+it.c+
+               '" text-anchor="middle" paint-order="stroke" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"'+
+               (it.b?' font-weight="600"':'')+'>'+it.v.toFixed(1)+'</text>');
+      }
+    }
+  }
+
+  for(i=0;i<N;i+=2)
+    o.push('<text x="'+X(i).toFixed(1)+'" y="'+(padT+ih+18)+'" font-size="10.5" fill="#555" text-anchor="middle">'
+           +p2(i)+':00-'+p2(i+1)+':00</text>');
+  o.push('<text x="'+padL+'" y="'+(padT-10)+'" font-size="12" fill="#6b7280">逐小时加权均价（元/MWh）</text>');
+  o.push('<text x="'+(padL+iw)+'" y="'+(padT-10)+'" font-size="12" fill="#8a9099" text-anchor="end">共 '+days.length+' 天</text>');
+  o.push('<line id="cgl" x1="0" y1="'+padT+'" x2="0" y2="'+(padT+ih)+'" stroke="#1f6fb2" stroke-width="1.1" opacity="0"/>');
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+HH+'" width="100%" role="img">'+o.join('')+'</svg>';
+
+  var lh='<span class="lg on" style="--c:'+C_CMP+'"><i></i>已选 '+days.length+' 天均价</span>';
+  series.forEach(function(s,k){
+    var on=state.csel[s.d]!==false;
+    lh+='<span class="lg'+(on?' on':'')+'" data-d="'+s.d+'" style="--c:'+CMPC[k%CMPC.length]+'"><i></i>'
+       +s.d.slice(5)+'</span>';
+  });
+  lg.innerHTML=lh;
+  var chips=lg.querySelectorAll('.lg[data-d]');
+  for(var q=0;q<chips.length;q++){
+    chips[q].addEventListener('click',function(){
+      var d=this.getAttribute('data-d');
+      state.csel[d]=(state.csel[d]===false);
+      renderCmp();
+    });
+  }
+  if(hint) hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
+    +'　（粗黑线=这些天的逐小时均价；点图例可单独隐藏某天）';
+
+  var svg=el.querySelector('svg'), tip=document.getElementById('cmptip');
+  svg.addEventListener('mousemove',function(e){
+    var r=svg.getBoundingClientRect();
+    var sx=(e.clientX-r.left)/r.width*W;
+    var idx=Math.floor((sx-padL)/(iw/N));
+    if(idx<0)idx=0; if(idx>N-1)idx=N-1;
+    var gl=document.getElementById('cgl');
+    gl.setAttribute('x1',X(idx).toFixed(1)); gl.setAttribute('x2',X(idx).toFixed(1));
+    gl.setAttribute('opacity','0.5');
+    var rows='<br>均价 <b style="color:#ffb3a7">'+(avg[idx]!=null?avg[idx].toFixed(2):'—')+'</b>';
+    var shown=0;
+    for(var k2=0;k2<series.length;k2++){
+      var s2=series[k2];
+      if(state.csel[s2.d]===false) continue;
+      var v2=s2.v[idx];
+      if(v2==null) continue;
+      if(shown>=12){ rows+='<br>…（其余 '+(series.length-12)+' 天未列出）'; break; }
+      rows+='<br><span style="color:'+CMPC[k2%CMPC.length]+'">■</span> '+s2.d.slice(5)
+           +' <b>'+v2.toFixed(2)+'</b>';
+      shown++;
+    }
+    tip.innerHTML='<b>'+p2(idx)+':00–'+p2(idx+1)+':00</b>'+rows;
+    tip.style.display='block';
+    var box=document.querySelector('#cmpchart').parentNode.getBoundingClientRect();
+    var tx=e.clientX-box.left+14, ty=e.clientY-box.top-42;
+    if(tx>box.width-260) tx=box.width-260;
+    if(ty<0) ty=6;
+    tip.style.left=tx+'px'; tip.style.top=ty+'px';
+  });
+  svg.addEventListener('mouseleave',function(){
+    tip.style.display='none';
+    var gl=document.getElementById('cgl');
+    if(gl) gl.setAttribute('opacity','0');
+  });
 }
 
 /* ================= 按月懒加载（站点模式） ================= */
@@ -636,7 +807,8 @@ function statDays(){
   var m=document.getElementById('statmonth').value;
   var days=(m==='ALL')?FULL.slice():FULL.filter(function(d){return monthOf(d)===m;});
   var partIn=PART.filter(function(d){return m==='ALL'||monthOf(d)===m;});
-  return days.concat(partIn).concat(FULL.slice(-5));
+  /* 已勾选的日期所在月份也必须加载（默认勾选会跨月） */
+  return days.concat(partIn).concat(FULL.slice(-5)).concat(pickedDays());
 }
 function statSafe(){ withData(statDays(), renderStat); }
 
@@ -703,6 +875,10 @@ function initUI(){
     state.pick={};
     renderStat();
   });
+  document.getElementById('cmplabel').addEventListener('change',function(){
+    state.cmpLabel=this.value;
+    renderCmp();
+  });
 
   drawSafe();
   boxSafe();
@@ -716,6 +892,10 @@ function start(){
      避免历史上有缺口的日期被误认成今天、进而被当默认视图。 */
   var lastPart = PART.length ? PART[PART.length-1] : null;
   TODAY = (lastPart && lastPart > LASTFULL) ? lastPart : null;
+  /* 默认勾选最近 10 个完整日（不含当天——当天属未完成日，本就不在 FULL 里） */
+  if(!Object.keys(state.pick).length){
+    FULL.slice(-10).forEach(function(d){ state.pick[d]=1; });
+  }
   initUI();
 }
 
