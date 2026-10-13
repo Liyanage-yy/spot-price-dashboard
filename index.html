@@ -72,7 +72,7 @@ table.st td.pk input{cursor:pointer;margin:0}
 <div class="card"><div id="resvchart"></div></div>
 <div class="card" style="padding:0"><div class="tblwrap"><table id="resvtable"></table></div></div>
 <h2>价格统计</h2>
-<div class="ctl"><span>月份：<select id="statmonth"></select></span><span>着色：<select id="sigk"><option value="1">±1σ</option><option value="1.5" selected>±1.5σ</option><option value="2">±2σ</option></select></span><span>行为逐小时均价（该小时 4 个 15 分钟点按<b>出清电量加权</b>）；<b>月均价、近 5 天均价（固定取最近 5 个完整日，不随月份变化）与下方「已选日期均值」的逐时值和平均数同样按出清电量加权</b>；24 点价格按该行<b>均值 ± 倍数标准差</b>着色（红=偏高、绿=偏低）。</span></div>
+<div class="ctl"><span>月份：<select id="statmonth"></select></span><span>着色：<select id="sigk"><option value="1">±1σ</option><option value="1.5" selected>±1.5σ</option><option value="2">±2σ</option></select></span><span>行为逐小时均价（该小时 4 个 15 分钟点按<b>出清电量加权</b>）；<b>近 5 天均价固定取最近 5 个完整日</b>，不随月份变化；24 点价格按该行<b>均值 ± 倍数标准差</b>着色（红=偏高、绿=偏低）。</span></div>
 <div class="card" style="padding:0"><div class="tblwrap"><table id="stattable" class="st"></table></div></div>
 <div class="ctl" style="margin:16px 0 10px"><span id="calchint"></span><button class="btn" id="calcclr">清空勾选</button></div>
 <div class="card" style="padding:0"><div class="tblwrap"><table id="calctable" class="st"></table></div></div>
@@ -80,7 +80,7 @@ table.st td.pk input{cursor:pointer;margin:0}
 <div class="ctl"><span id="cmphint"></span><span>标注：<select id="cmplabel"><option value="all" selected>全部点位</option><option value="avg">仅均价线</option><option value="none">不标注</option></select></span></div>
 <div class="legend" id="cmplegend"></div>
 <div class="card chartbox"><div id="cmpchart"></div><div id="cmptip"></div></div>
-<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-08，取数时点 2026-10-09 14:29:39。</div>
+<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-12，取数时点 2026-10-13 09:29:12。</div>
 </div>
 
 <script>
@@ -460,45 +460,16 @@ function rowStats(arr){
   var va=v.reduce(function(a,b){return a+(b-mu)*(b-mu);},0)/v.length;
   return {mu:mu, sd:Math.sqrt(va)};
 }
-function qOf(d){ var rec=QTY[d]||{}; return rec["总出清电量"]||[]; }
-function qHour(d,i){                       /* 某天第 i 小时 4 个 15 分钟点的出清电量之和 */
-  var q=qOf(d), s=0, j;
-  for(j=i*4;j<i*4+4 && j<q.length;j++) s+=q[j];
-  return s;
-}
-function qDay(d){                          /* 某天全部点的出清电量之和（用作「平均数」的权重） */
-  var q=qOf(d), s=0, j;
-  for(j=0;j<q.length;j++) s+=q[j];
-  return s;
-}
-/* 跨天聚合：月均价 / 近 5 天均价 / 已选日期均值 / 对比图均价线一律「按出清电量加权」。
-   逐时 = Σ(量×小时价)/Σ量（同交易中心工作簿 SUMPRODUCT(量,小时价)/SUM(量) 口径）；
-   平均数 = Σ(当日总电量×当日加权均价)/Σ当日总电量。
-   最高价 / 最低价 / 中位数不是平均量，保持原口径（各日统计值的 MAX / MIN / 中位）。 */
 function unionRow(days, key){
+  var s=STAT[days[0]]||{};
   if(key==='h'){
     var out=[];
     for(var i=0;i<24;i++){
-      var n=0, den=0;
-      days.forEach(function(d){
-        var x=(STAT[d]||{h:[]}).h[i];
-        if(x==null) return;
-        var w=qHour(d,i);
-        if(!(w>0)) return;
-        n+=w*x; den+=w;
-      });
-      out.push(den>0 ? n/den : null);
+      var vs=[];
+      days.forEach(function(d){ var x=(STAT[d]||{h:[]}).h[i]; if(x!=null) vs.push(x); });
+      out.push(vs.length?vs.reduce(function(a,b){return a+b;},0)/vs.length:null);
     }
     return out;
-  }
-  if(key==='mean'){
-    var n2=0, den2=0;
-    days.forEach(function(d){
-      var x=(STAT[d]||{}).mean, w=qDay(d);
-      if(x==null || !(w>0)) return;
-      n2+=w*x; den2+=w;
-    });
-    return den2>0 ? n2/den2 : null;
   }
   var vs2=[];
   days.forEach(function(d){ var x=(STAT[d]||{})[key]; if(x!=null) vs2.push(x); });
@@ -603,7 +574,7 @@ function renderCalc(){
   var tb=document.getElementById('calctable');
   if(!tb) return;
   if(!days.length){
-    hint.textContent='勾选上表「日期」行最右侧的方框，即可在这里按出清电量加权算出这些天的逐时值和平均数（口径与「近 5 天均价」相同）。';
+    hint.textContent='勾选上表「日期」行最右侧的方框，即可在这里计算这些天的逐时均值（口径与「近 5 天均价」相同）。';
     tb.innerHTML='';
     return;
   }
@@ -627,7 +598,7 @@ function renderCalc(){
   out+='<td class="pk"></td></tr></tbody>';
   tb.innerHTML=out;
   hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
-    +'　（逐时值按所选各天同一小时的出清电量加权，与「近 5 天均价」口径一致）';
+    +'　（逐时均值按所选各天同一小时取平均，与「近 5 天均价」口径一致）';
 }
 
 /* ================= ⑥ 近日加权均价对比 ================= */
@@ -758,7 +729,7 @@ function renderCmp(){
     });
   }
   if(hint) hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
-    +'　（粗黑线=这些天按出清电量加权的逐小时均价；点图例可单独隐藏某天）';
+    +'　（粗黑线=这些天的逐小时均价；点图例可单独隐藏某天）';
 
   var svg=el.querySelector('svg'), tip=document.getElementById('cmptip');
   svg.addEventListener('mousemove',function(e){
