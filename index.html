@@ -56,6 +56,18 @@ table tbody tr:nth-child(even) td.sig-lo2{background:#dcEEE0}
 .btn:hover{border-color:#aab2bb;color:var(--ink)}
 table.st th.pk,table.st td.pk{width:26px;padding:3px 1px;text-align:center}
 table.st td.pk input{cursor:pointer;margin:0}
+/* 勾选列在最左、日期列紧随其后：两者都要 sticky，横向滚动时不脱层 */
+#stattable th.pk,#stattable td.pk{position:sticky;left:0;z-index:3;background:#fafbfc}
+#stattable thead th.pk{background:#eef1f5;z-index:4}
+#stattable th.dr,#stattable td.dr{left:26px}
+#stattable th.dr{z-index:4}
+table.st th.cp,table.st td.cp{width:46px;padding:3px 2px;text-align:center;font-weight:400}
+.cbtn{font:10.5px/1.35 inherit;padding:1px 5px;border:1px solid #ccd2d9;border-radius:4px;
+      background:#fff;color:#5b6068;cursor:pointer;white-space:nowrap;
+      display:inline-block;min-width:34px;text-align:center}
+.cbtn:hover{border-color:#aab2bb;color:var(--ink)}
+.cbtn.done{color:#1a7f46;border-color:#a8d5bb;background:#f2fbf5;font-weight:600}
+.cbtn.fail{color:#b3261e;border-color:#e8b4b0;background:#fdf3f2}
 .foot{font-size:12px;color:#8a9099;margin-top:14px}
 </style></head><body><div class="wrap">
 <h1>四川电力现货电价看板</h1>
@@ -80,7 +92,7 @@ table.st td.pk input{cursor:pointer;margin:0}
 <div class="ctl"><span id="cmphint"></span><span>标注：<select id="cmplabel"><option value="all" selected>全部点位</option><option value="avg">仅均价线</option><option value="none">不标注</option></select></span></div>
 <div class="legend" id="cmplegend"></div>
 <div class="card chartbox"><div id="cmpchart"></div><div id="cmptip"></div></div>
-<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-15，取数时点 2026-10-16 11:30:37。</div>
+<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-15，取数时点 2026-10-16 11:37:06。</div>
 </div>
 
 <script>
@@ -517,7 +529,8 @@ function renderStat(){
   if(days.length){
     rows.push({name:(m==='ALL'?'全部':(parseInt(m.slice(5),10)+' 月'))+'均价',
                h:unionRow(days,'h'), hi:unionRow(days,'hi'), lo:unionRow(days,'lo'),
-               mean:unionRow(days,'mean'), med:unionRow(days,'med'), sum:true});
+               mean:unionRow(days,'mean'), med:unionRow(days,'med'), sum:true,
+               sub:days[0].slice(5)+' ~ '+days[days.length-1].slice(5)});
   }
   rows.push({name:'近 5 天均价', h:unionRow(recent5,'h'), hi:unionRow(recent5,'hi'),
              lo:unionRow(recent5,'lo'), mean:unionRow(recent5,'mean'),
@@ -529,13 +542,17 @@ function renderStat(){
     rows.push({name:d, h:s.h, hi:s.hi, lo:s.lo,
                mean:s.mean, med:s.med, sum:false});
   });
-  var h='<thead><tr><th class="dr">日期</th>';
+  RD=rows;
+  var h='<thead><tr><th class="pk"><input type="checkbox" id="pickall" title="全选/取消上表日期"></th>'
+    +'<th class="dr">日期</th>';
   for(var i=0;i<24;i++) h+='<th>'+(i)+'-'+(i+1)+'</th>';
   h+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th>'
-    +'<th class="pk"><input type="checkbox" id="pickall" title="全选/取消上表日期"></th></tr></thead><tbody>';
-  rows.forEach(function(r){
+    +'<th class="cp">复制</th></tr></thead><tbody>';
+  rows.forEach(function(r, ri){
     var st=rowStats(r.h);
-    h+='<tr><td class="dr">'+r.name+(r.sub?'<br><span style="font-weight:400;color:#8a9099;font-size:11.5px">'+r.sub+'</span>':'')+'</td>';
+    h+='<tr><td class="pk">'+(r.sum?'':'<input type="checkbox" class="pkd" data-d="'+r.name+'"'
+        +(state.pick[r.name]?' checked':'')+'>')+'</td>';
+    h+='<td class="dr">'+r.name+(r.sub?'<br><span style="font-weight:400;color:#8a9099;font-size:11.5px">'+r.sub+'</span>':'')+'</td>';
     r.h.forEach(function(x){
       var cls=[]; 
       if(r.sum) cls.push('sum');
@@ -549,8 +566,7 @@ function renderStat(){
       if(x==null) cls.push('na');
       h+='<td'+(cls.length?' class="'+cls.join(' ')+'"':'')+'>'+(x==null?'—':x.toFixed(2))+'</td>';
     });
-    h+='<td class="pk">'+(r.sum?'':'<input type="checkbox" class="pkd" data-d="'+r.name+'"'
-        +(state.pick[r.name]?' checked':'')+'>')+'</td>';
+    h+='<td class="cp"><button class="cbtn" data-r="'+ri+'" title="复制该行 24 个小时电价（制表符分隔，可直接粘贴到 Excel）">复制</button></td>';
     h+='</tr>';
   });
   h+='</tbody>';
@@ -578,6 +594,12 @@ function renderStat(){
       renderCalc();
     });
   }
+  var cbs=document.querySelectorAll('#stattable .cbtn');
+  for(var q3=0;q3<cbs.length;q3++){
+    cbs[q3].addEventListener('click',function(){
+      copyRow(parseInt(this.getAttribute('data-r'),10), this);
+    });
+  }
   syncPickAll();
   renderCalc();
 }
@@ -588,6 +610,45 @@ function syncPickAll(){
   var boxes=document.querySelectorAll('#stattable .pkd'), all=boxes.length>0;
   for(var q=0;q<boxes.length;q++){ if(!boxes[q].checked){ all=false; break; } }
   pa.checked=all;
+}
+
+/* ================= 行内复制（24 个小时电价，制表符分隔） ================= */
+var RD=[];
+function _copyFallback(t){
+  try{
+    var ta=document.createElement('textarea');
+    ta.value=t; ta.setAttribute('readonly','');
+    ta.style.position='fixed'; ta.style.top='-1000px'; ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, t.length);
+    var ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  }catch(e){ return false; }
+}
+function copyRow(i, btn){
+  var r=RD[i]; if(!r) return;
+  copyVals(r.h, btn);
+}
+/* 复制用格式：四舍五入到小数点后 3 位（页面上仍显示 2 位，避免表格被撑宽） */
+function _fmt3(x){ return x==null?'':x.toFixed(3); }
+function copyVals(arr, btn){
+  if(!arr || !arr.length) return;
+  var t=arr.map(_fmt3).join('\t');
+  var flash=function(ok){
+    if(!btn) return;
+    btn.textContent=ok?'✓':'✗';                 /* 单字符：按钮宽度不变，表格不会被撑宽 */
+    btn.title=ok?'已复制 24 个小时电价（3 位小数）':'复制失败，请手动选择单元格复制';
+    btn.className='cbtn '+(ok?'done':'fail');
+    setTimeout(function(){ btn.textContent='复制'; btn.title='复制该行 24 个小时电价（制表符分隔，可直接粘贴到 Excel）';
+                          btn.className='cbtn'; }, 1300);
+  };
+  /* 同步兜底优先：点击手势内 execCommand 无需权限、结果即时可知；失败再试异步 API */
+  if(_copyFallback(t)){ flash(true); return; }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ flash(true); },
+      function(){ flash(false); });
+  } else { flash(false); }
 }
 
 /* ================= ⑤ 已选日期均值计算（口径同「近 5 天均价」） ================= */
@@ -612,7 +673,7 @@ function renderCalc(){
   var st=rowStats(hh);
   var out='<thead><tr><th class="dr">已选日期均值</th>';
   for(var i=0;i<24;i++) out+='<th>'+i+'-'+(i+1)+'</th>';
-  out+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th><th class="pk"></th>'
+  out+='<th>最高价</th><th>最低价</th><th>平均数</th><th>中位数</th><th class="cp">复制</th>'
       +'</tr></thead><tbody><tr>';
   out+='<td class="dr">共 '+days.length+' 天</td>';
   hh.forEach(function(x){
@@ -624,8 +685,11 @@ function renderCalc(){
     var x=unionRow(days,key);
     out+='<td'+(x==null?' class="na"':'')+'>'+(x==null?'—':x.toFixed(2))+'</td>';
   });
-  out+='<td class="pk"></td></tr></tbody>';
+  out+='<td class="cp"><button class="cbtn" title="复制均值行的 24 个小时值（制表符分隔，可直接粘贴到 Excel）">复制</button></td>'
+      +'</tr></tbody>';
   tb.innerHTML=out;
+  var cb=tb.querySelector('.cbtn');
+  if(cb) cb.addEventListener('click',function(){ copyVals(hh, this); });
   hint.textContent='已选 '+days.length+' 天：'+days[0]+' ~ '+days[days.length-1]
     +'　（逐时值按所选各天同一小时的出清电量加权，与「近 5 天均价」口径一致）';
 }
