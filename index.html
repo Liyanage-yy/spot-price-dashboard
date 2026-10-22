@@ -54,12 +54,6 @@ table tbody tr:nth-child(even) td.sig-lo{background:#9dcdab}
 table tbody tr:nth-child(even) td.sig-lo2{background:#dcEEE0}
 .btn{font:13px/1.6 inherit;padding:4px 13px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--sub);cursor:pointer}
 .btn:hover{border-color:#aab2bb;color:var(--ink)}
-.xlsbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-8px 0 18px}
-.xbtn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font:13.5px/1 inherit;
-      color:#fff;background:linear-gradient(135deg,#1f7a4d,#2f9e63);padding:9px 15px;border-radius:7px;
-      box-shadow:0 2px 6px rgba(31,122,77,.22)}
-.xbtn span{font-size:11.5px;opacity:.85;font-weight:400}
-.xbtn:hover{box-shadow:0 4px 12px rgba(31,122,77,.3)}
 .xnote{font-size:11.5px;color:#8a9099}
 table.st th.pk,table.st td.pk{width:26px;padding:3px 1px;text-align:center}
 table.st td.pk input{cursor:pointer;margin:0}
@@ -81,7 +75,6 @@ table.st td.wxl{color:#2c6fb0}
 .foot{font-size:12px;color:#8a9099;margin-top:14px}
 </style></head><body><div class="wrap">
 <h1>四川电力现货电价看板</h1>
-<div class="xlsbar"><a class="xbtn" href="export/spot-price-latest.xlsx" download="2026.10.21现货价格.xlsx">⬇ 导出 Excel<span>统计 / 出力比例 / 总出力 / 现货价格（含图表与公式）</span></a></div>
 <h2>现货电价与各电源出清电量</h2>
 <div class="ctl"><span>日期：<select id="scope"></select></span><span>粒度：<span class="seg" id="gran"><button data-g="h" class="on">小时</button><button data-g="m15">15 分钟</button></span></span><span id="hint" style="color:#8a9099"></span></div>
 <div class="legend" id="legend"></div>
@@ -103,7 +96,7 @@ table.st td.wxl{color:#2c6fb0}
 <div class="ctl"><span id="cmphint"></span><span>标注：<select id="cmplabel"><option value="all" selected>全部点位</option><option value="avg">仅均价线</option><option value="none">不标注</option></select></span></div>
 <div class="legend" id="cmplegend"></div>
 <div class="card chartbox"><div id="cmpchart"></div><div id="cmptip"></div></div>
-<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-21，取数时点 2026-10-22 10:26:57。</div>
+<div class="foot">数据源：新一代电力交易平台 10118 实时出清电价（元/MWh）、10120 日内各电源类型出清电量（MW）、10140 系统备用信息（MW）；数据范围 2025-10-01 ~ 2026-10-21，取数时点 2026-10-22 09:45:15。</div>
 </div>
 
 <script>
